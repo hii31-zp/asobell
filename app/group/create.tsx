@@ -1,9 +1,6 @@
 /*グループ一覧(app/(tabs)/groups.tsxページの右下のボタンから遷移。
 グループを作成する画面*/
 
-/*グループ一覧(app/(tabs)/groups.tsxページの右下のボタンから遷移。
-グループに招待する画面*/
-
 import { MyText } from "@/compornents/MyText";
 import { auth, db } from "@/firebase";
 import { Ionicons } from "@expo/vector-icons";
@@ -52,7 +49,9 @@ export default function CreateGroupScreen() {
 
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      setErrorMessage("ユーザー情報の取得に失敗しました。再ログインしてください。");
+      setErrorMessage(
+        "ユーザー情報の取得に失敗しました。再ログインしてください。",
+      );
       return;
     }
 
@@ -61,22 +60,19 @@ export default function CreateGroupScreen() {
     try {
       const inviteCode = generateInviteCode();
 
-      // 1. groups コレクションに新しいグループを作成
       const groupRef = await addDoc(collection(db, "groups"), {
         name: groupName.trim(),
         inviteCode: inviteCode,
         ownerId: currentUser.uid,
-        members: [currentUser.uid], // 画像の構造（members）に合わせる
+        memberIds: [currentUser.uid],
         createdAt: serverTimestamp(),
       });
 
-      // 2. 作成したグループIDを users/{uid} の joinedGroupIds 配列に追加する（★ここがポイント）
       const userRef = doc(db, "users", currentUser.uid);
       await updateDoc(userRef, {
         joinedGroupIds: arrayUnion(groupRef.id),
       });
 
-      // 3. 元の画面に戻る
       router.back();
     } catch (e) {
       console.error("Error creating group: ", e);

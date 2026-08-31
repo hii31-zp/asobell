@@ -1,4 +1,5 @@
 /*ログイン画面*/
+// パスワード忘れた人用のファイルが開けない
 
 import { MyText } from "@/compornents/MyText";
 import { Ionicons } from "@expo/vector-icons";
@@ -80,12 +81,19 @@ export default function LoginScreen() {
       className="bg-bg flex-1"
       contentContainerStyle={{ padding: 16, paddingTop: 24 }}
     >
-      <MyText className="text-brown text-3xl font-rounded-bold pl-3">
+      <Pressable
+                className="flex-row items-center gap-1"
+                onPress={() => router.back()}
+              >
+                <Ionicons name="chevron-back" size={20} color="#8B6F4E" />
+                <MyText className="text-brown text-xl">戻る</MyText>
+              </Pressable>
+      <MyText className="text-brown text-3xl font-rounded-bold pl-5 pt-5">
         ログイン
       </MyText>
       <View className="gap-4 pt-5 pl-5 pr-5">
         <View className="gap-1.5">
-          <MyText className="text-label text-base font-rounded-bold">
+          <MyText className="text-label text-xl font-rounded-bold">
             メールアドレス
           </MyText>
           <TextInput
@@ -99,7 +107,7 @@ export default function LoginScreen() {
           />
         </View>
         <View className="gap-1.5">
-          <MyText className="text-label text-base font-rounded-bold">
+          <MyText className="text-label text-xl font-rounded-bold">
             パスワード
           </MyText>
           <View className="relative justify-center">

@@ -1,7 +1,6 @@
-/*パスワード変更画面（ログイン時にパスワードを忘れた時）*/
-
 import { MyText } from "@/compornents/MyText";
 import { useRouter } from "expo-router";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -10,11 +9,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-
-import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../../firebase";
 
-export default async function MyComponent() {
+export default function ResetPasswordScreen() {
   const [email, setEmail] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,7 +24,7 @@ export default async function MyComponent() {
     return "";
   };
 
-  const handleSignup = async () => {
+  const handleResetPassword = async () => {
     const error = validate(email);
     if (error) {
       setErrorMessage(error);
@@ -35,43 +32,43 @@ export default async function MyComponent() {
     }
     setErrorMessage("");
     setLoading(true);
-  };
 
-  try {
-    await sendPasswordResetEmail(auth, email.trim());
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
 
-    Alert.alert(
-      "送信完了",
-      "パスワード再設定用のメールを送信しました。メール内のリンクから再設定を行ってください。",
-      [
-        {
-          text: "OK",
-          onPress: () => router.back(), // ログイン画面に戻る
-        },
-      ],
-    );
-  } catch (err: any) {
-    console.error("パスワードリセットエラー:", err);
-
-    if (err.code === "auth/user-not-found") {
-      setErrorMessage("このメールアドレスは登録されていません");
-    } else if (err.code === "auth/invalid-email") {
-      setErrorMessage("メールアドレスの形式が正しくありません");
-    } else {
-      setErrorMessage(
-        "メールの送信に失敗しました。時間をおいて再度お試しください",
+      Alert.alert(
+        "送信完了",
+        "パスワード再設定用のメールを送信しました。メール内のリンクから再設定を行ってください。",
+        [
+          {
+            text: "OK",
+            onPress: () => router.back(),
+          },
+        ]
       );
+    } catch (err: any) {
+      console.error("パスワードリセットエラー:", err);
+
+      if (err.code === "auth/user-not-found") {
+        setErrorMessage("このメールアドレスは登録されていません");
+      } else if (err.code === "auth/invalid-email") {
+        setErrorMessage("メールアドレスの形式が正しくありません");
+      } else {
+        setErrorMessage(
+          "メールの送信に失敗しました。時間をおいて再度お試しください"
+        );
+      }
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
-  }
+  };
 
   return (
     <View className="bg-bg gap-4 p-4 pt-6 flex-1">
       <MyText className="text-brown text-2xl font-rounded-bold pl-4 pr-4">
         パスワードをお忘れですか？
       </MyText>
-      <View className="">
+      <View>
         <MyText className="text-textSub text-base font-rounded pr-4 pl-4">
           登録済みのメールアドレスを入力してください。パスワード再設定用のリンクをお送りします。
         </MyText>
@@ -102,7 +99,7 @@ export default async function MyComponent() {
       <View className="pr-8 pl-8">
         <Pressable
           className="border-2 border-primary bg-primary active:bg-[#C14C24] h-[58px] px-4 rounded-full font-rounded items-center justify-center w-full"
-          onPress={handleSignup}
+          onPress={handleResetPassword}
           disabled={loading}
         >
           {loading ? (
@@ -115,11 +112,7 @@ export default async function MyComponent() {
         </Pressable>
       </View>
       <View style={{ width: "100%", alignItems: "center" }}>
-        <Pressable
-          onPress={() => {
-            router.push("/welcome");
-          }}
-        >
+        <Pressable onPress={() => router.back()}>
           <MyText
             className="pt-3 text-primary active:text-danger text-base"
             style={{ textDecorationLine: "underline" }}

@@ -3,7 +3,13 @@
 import { MyText } from "@/compornents/MyText";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  TextInput,
+  View,
+} from "react-native";
 
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -89,12 +95,19 @@ export default function MyComponent() {
 
   return (
     <View className="bg-bg gap-4 p-4 pt-6 flex-1">
-      <MyText className="text-brown text-3xl font-rounded-bold pl-3">
+      <Pressable
+        className="flex-row items-center gap-1"
+        onPress={() => router.back()}
+      >
+        <Ionicons name="chevron-back" size={20} color="#8B6F4E" />
+        <MyText className="text-brown text-xl">戻る</MyText>
+      </Pressable>
+      <MyText className="text-brown text-3xl font-rounded-bold pl-4 pt-2">
         新規登録
       </MyText>
-      <View className="gap-4 pt-5 pl-5 pr-5">
+      <View className="gap-4 pt-3 pl-5 pr-5">
         <View className="gap-1.5">
-          <MyText className="text-label text-sm font-rounded-bold">
+          <MyText className="text-label text-xl font-rounded-bold">
             ニックネーム
           </MyText>
           <TextInput
@@ -106,7 +119,7 @@ export default function MyComponent() {
           />
         </View>
         <View className="gap-1.5">
-          <MyText className="text-label text-sm font-rounded-bold">
+          <MyText className="text-label text-xl font-rounded-bold">
             メールアドレス
           </MyText>
           <TextInput
@@ -120,7 +133,7 @@ export default function MyComponent() {
           />
         </View>
         <View className="gap-1.5">
-          <MyText className="text-label text-sm font-rounded-bold">
+          <MyText className="text-label text-xl font-rounded-bold">
             パスワード
           </MyText>
           <View className="relative justify-center">
@@ -145,7 +158,7 @@ export default function MyComponent() {
           </View>
         </View>
         <View className="gap-1.5">
-          <MyText className="text-label text-sm font-rounded-bold">
+          <MyText className="text-label text-xl font-rounded-bold">
             パスワード（確認）
           </MyText>
           <View className="relative justify-center">
@@ -189,7 +202,7 @@ export default function MyComponent() {
           {loading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <MyText className="text-white font-semibold text-xl">
+            <MyText className="text-white font-semibold text-2xl">
               メールアドレスで登録
             </MyText>
           )}
@@ -204,7 +217,7 @@ export default function MyComponent() {
           <View className="flex-1 h-[1px] bg-inputBorder" />
         </View>
         <Pressable className="border-2 border-inputBorder bg-white active:bg-inputBorder h-[58px] px-6 rounded-full font-rounded items-center justify-center w-full">
-          <MyText className="text-brown font-semibold text-xl">
+          <MyText className="text-brown font-semibold text-2xl">
             Googleで登録
           </MyText>
         </Pressable>

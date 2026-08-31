@@ -12,7 +12,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
 type Participant = {
   id: string;
@@ -65,6 +65,7 @@ export default function AsobellDetail() {
 
   const [asobell, setAsobell] = useState<AsobellData | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     if (!asobellId || !searchGroupId) {
@@ -122,7 +123,7 @@ export default function AsobellDetail() {
             const d = new Date(raw.startAt);
             if (!isNaN(d.getTime())) {
               formattedDate = `${d.getMonth() + 1}月${d.getDate()}日 ${String(
-                d.getHours()
+                d.getHours(),
               ).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}〜`;
             }
           }
@@ -147,7 +148,7 @@ export default function AsobellDetail() {
       (error) => {
         console.error("データ取得エラー:", error);
         setDataLoading(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -185,24 +186,63 @@ export default function AsobellDetail() {
   const isJoined = asobell.participantIds.includes(myUid);
   const isFull = participants.length >= capacity;
 
-  const handleToggleJoin = async () => {
+  const executeJoin = async () => {
     if (!asobellId || !asobell.groupId || !myUid) return;
-
     const docRef = doc(db, "groups", asobell.groupId, "asobells", asobellId);
 
+    setUpdating(true);
     try {
-      if (isJoined) {
-        await updateDoc(docRef, {
-          participantIds: arrayRemove(myUid),
-        });
-      } else {
-        if (isFull) return;
-        await updateDoc(docRef, {
-          participantIds: arrayUnion(myUid),
-        });
-      }
+      await updateDoc(docRef, {
+        participantIds: arrayUnion(myUid),
+      });
     } catch (error) {
-      console.error("参加状態の更新エラー:", error);
+      console.error("参加処理エラー:", error);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const executeLeave = async () => {
+    if (!asobellId || !asobell.groupId || !myUid) return;
+    const docRef = doc(db, "groups", asobell.groupId, "asobells", asobellId);
+
+    setUpdating(true);
+    try {
+      await updateDoc(docRef, {
+        participantIds: arrayRemove(myUid),
+      });
+    } catch (error) {
+      console.error("参加キャンセルの更新エラー:", error);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleToggleJoin = () => {
+    if (!asobellId || !asobell.groupId || !myUid || updating) return;
+
+    if (isJoined) {
+      Alert.alert(
+        "参加キャンセル",
+        "このあそベルの参加をキャンセルしますか？",
+        [
+          { text: "戻る", style: "cancel" },
+          {
+            text: "キャンセルする",
+            style: "destructive",
+            onPress: executeLeave,
+          },
+        ],
+      );
+    } else {
+      if (isFull) return;
+      Alert.alert("あそベルを鳴らす", "このあそベルに参加しますか？", [
+        { text: "やめる", style: "cancel" },
+        {
+          text: "参加する",
+          onPress: executeJoin,
+        },
+      ]);
     }
   };
 
@@ -292,7 +332,6 @@ export default function AsobellDetail() {
             />
           </View>
 
-          {/* 参加者一覧表示 */}
           <View className="gap-3 mt-2">
             {participants.map((p) => (
               <View key={p.id} className="flex-row items-center gap-3">
@@ -313,26 +352,29 @@ export default function AsobellDetail() {
         </View>
       </View>
 
-      {/* 参加 / 参加キャンセル ボタン */}
       <View className="p-6">
         <Pressable
-          disabled={!isJoined && isFull}
+          disabled={(!isJoined && isFull) || updating}
           onPress={handleToggleJoin}
           className={`h-[52px] mb-10 rounded-full items-center justify-center ${
             isJoined
               ? "bg-inactive border border-inputBorder"
               : isFull
-              ? "bg-inactive"
-              : "bg-primary active:bg-[#C14C24]"
+                ? "bg-inactive"
+                : "bg-primary active:bg-[#C14C24]"
           }`}
         >
-          <MyText
-            className={`font-bold text-xl ${
-              isJoined ? "text-dark" : isFull ? "text-textSub" : "text-white"
-            }`}
-          >
-            {isJoined ? "参加キャンセル" : isFull ? "満員です" : "あそべる！"}
-          </MyText>
+          {updating ? (
+            <ActivityIndicator color={isJoined ? "#8B6F4E" : "#FFFFFF"} />
+          ) : (
+            <MyText
+              className={`font-bold text-xl ${
+                isJoined ? "text-dark" : isFull ? "text-textSub" : "text-white"
+              }`}
+            >
+              {isJoined ? "参加キャンセル" : isFull ? "満員です" : "あそべる！"}
+            </MyText>
+          )}
         </Pressable>
       </View>
     </View>
