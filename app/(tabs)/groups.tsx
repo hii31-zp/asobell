@@ -1,10 +1,17 @@
 import { MyText } from "@/compornents/MyText";
 import { useUserProfile } from "@/compornents/useUserProfile";
-import { db } from "@/firebase";
+import { auth, db } from "@/firebase";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { collection, doc, onSnapshot } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 
 type Member = {
@@ -28,133 +35,138 @@ type GroupDocData = {
 };
 
 type UserDocData = {
-  joinedGroupIds?: string[];
-  nickname?: string;
   avatarText?: string;
+  nickname?: string;
+  name?: string;
 };
 
 export default function GroupsScreen() {
   const router = useRouter();
-
-  const { user, loading: userLoading } = useUserProfile();
+  const { user, profile, loading: userLoading } = useUserProfile();
 
   const [groups, setGroups] = useState<Group[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
-  useEffect(() => {
-    if (userLoading || !user?.uid) return;
+  const myUid = auth.currentUser?.uid || user?.uid || "";
+  const myAvatarText = profile?.avatarText || "??";
 
-    const userRef = doc(db, "users", user.uid);
+  useFocusEffect(
+    useCallback(() => {
+      if (!myUid) {
+        setDataLoading(false);
+        return;
+      }
 
-    const unsubUser = onSnapshot(
-      userRef,
-      (userSnap) => {
-        if (!userSnap.exists()) {
-          setGroups([]);
-          setDataLoading(false);
-          return;
-        }
+      setDataLoading(true);
 
-        const userData = userSnap.data() as UserDocData;
-        const joinedGroupIds = userData.joinedGroupIds || [];
+      const q = query(
+        collection(db, "groups"),
+        where("memberIds", "array-contains", myUid)
+      );
 
-        if (joinedGroupIds.length === 0) {
-          setGroups([]);
-          setDataLoading(false);
-          return;
-        }
+      const unsubGroupQuery = onSnapshot(
+        q,
+        async (snapshot) => {
+          if (snapshot.empty) {
+            setGroups([]);
+            setDataLoading(false);
+            return;
+          }
 
-        const groupUnsubs: (() => void)[] = [];
-        const asobellUnsubsMap = new Map<string, () => void>();
-        const groupsMap = new Map<string, Group>();
+          const asobellUnsubsMap = new Map<string, () => void>();
+          const groupsMap = new Map<string, Group>();
+          let loadedCount = 0;
 
-        // 2. joinedGroupIds に含まれる各グループを取得
-        joinedGroupIds.forEach((groupId) => {
-          const groupRef = doc(db, "groups", groupId);
+          const groupPromises = snapshot.docs.map(async (groupDoc) => {
+            const groupId = groupDoc.id;
+            const data = groupDoc.data() as GroupDocData;
+            const memberIdsList = data.memberIds || [];
 
-          const unsubGroup = onSnapshot(
-            groupRef,
-            (groupSnap) => {
-              if (groupSnap.exists()) {
-                const data = groupSnap.data() as GroupDocData;
-                const memberIdsList = data.memberIds || [];
-                const membersList: Member[] =
-                  data.members ||
-                  memberIdsList.map((id: string) => ({
-                    id,
-                    name: "メンバー",
-                    initial: "MB",
-                  }));
+            const membersListPromises = memberIdsList.map(async (uid: string) => {
+              if (uid === myUid) {
+                return {
+                  id: uid,
+                  name: profile?.nickname || "自分",
+                  initial: myAvatarText,
+                };
+              }
 
-                const count =
-                  memberIdsList.length > 0
-                    ? memberIdsList.length
-                    : membersList.length;
-
-                if (asobellUnsubsMap.has(groupId)) {
-                  asobellUnsubsMap.get(groupId)?.();
+              try {
+                const uSnap = await getDoc(doc(db, "users", uid));
+                if (uSnap.exists()) {
+                  const uData = uSnap.data() as UserDocData;
+                  return {
+                    id: uid,
+                    name: uData.nickname || uData.name || "メンバー",
+                    initial: uData.avatarText || "MB",
+                  };
                 }
+              } catch (e) {
+                console.error(`ユーザー情報取得失敗 (${uid}):`, e);
+              }
 
-                const asobellsRef = collection(
-                  db,
-                  "groups",
-                  groupId,
-                  "asobells"
-                );
-                const unsubAsobell = onSnapshot(
-                  asobellsRef,
-                  (asobellSnap) => {
-                    const activeCount = asobellSnap.size;
+              return {
+                id: uid,
+                name: "メンバー",
+                initial: "MB",
+              };
+            });
 
-                    const groupItem: Group = {
-                      id: groupId,
-                      name: data.name || "名称未設定",
-                      members: membersList,
-                      memberCount: count,
-                      activeAsobellCount: activeCount,
-                    };
+            const resolvedMembers = await Promise.all(membersListPromises);
+            const count = memberIdsList.length > 0 ? memberIdsList.length : resolvedMembers.length;
 
-                    groupsMap.set(groupId, groupItem);
-                    setGroups(Array.from(groupsMap.values()));
-                    setDataLoading(false);
-                  },
-                  (err) => {
-                    console.error("Asobell error:", err);
-                    setDataLoading(false);
-                  }
-                );
+            const asobellsRef = collection(db, "groups", groupId, "asobells");
 
-                asobellUnsubsMap.set(groupId, unsubAsobell);
-              } else {
-                groupsMap.delete(groupId);
+            if (asobellUnsubsMap.has(groupId)) {
+              asobellUnsubsMap.get(groupId)?.();
+            }
+
+            const unsubAsobell = onSnapshot(
+              asobellsRef,
+              (asobellSnap) => {
+                const activeCount = asobellSnap.size;
+
+                groupsMap.set(groupId, {
+                  id: groupId,
+                  name: data.name || "名称未設定",
+                  members: resolvedMembers,
+                  memberCount: count,
+                  activeAsobellCount: activeCount,
+                });
+
                 setGroups(Array.from(groupsMap.values()));
+
+                loadedCount++;
+                if (loadedCount >= snapshot.docs.length) {
+                  setDataLoading(false);
+                }
+              },
+              (err) => {
+                console.error("Asobell error:", err);
                 setDataLoading(false);
               }
-            },
-            (err) => {
-              console.error("Group error:", err);
-              setDataLoading(false);
-            }
-          );
+            );
 
-          groupUnsubs.push(unsubGroup);
-        });
+            asobellUnsubsMap.set(groupId, unsubAsobell);
+          });
 
-        return () => {
-          groupUnsubs.forEach((unsub) => unsub());
-          asobellUnsubsMap.forEach((unsub) => unsub());
-        };
-      },
-      (err) => {
-        console.error("User fetch error:", err);
-        setDataLoading(false);
-      }
-    );
+          await Promise.all(groupPromises);
 
-    return () => {
-      unsubUser();
-    };
-  }, [userLoading, user?.uid]);
+          return () => {
+            asobellUnsubsMap.forEach((unsub) => unsub());
+          };
+        },
+        (err) => {
+          console.error("Group error:", err);
+          setDataLoading(false);
+        }
+      );
+
+      return () => {
+        unsubGroupQuery();
+      };
+    }, [myUid, myAvatarText, profile?.nickname])
+  );
 
   if (userLoading || dataLoading) {
     return (
@@ -180,7 +192,18 @@ export default function GroupsScreen() {
               style={{ marginLeft: 6 }}
             />
           </View>
+
+          <Pressable
+            onPress={() => router.push("/group/join")}
+            className="flex-row items-center bg-card border border-cardBorder px-3 py-1.5 rounded-full"
+          >
+            <Ionicons name="add" size={20} color="#D85A30" />
+            <MyText className="text-dark font-bold text-sm ml-1">
+              IDで参加
+            </MyText>
+          </Pressable>
         </View>
+
         <MyText className="text-textSub text-base mt-1 pb-2">
           仲間と気軽に、集まろう
         </MyText>
@@ -192,10 +215,29 @@ export default function GroupsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {groups.length === 0 ? (
-          <View className="items-center justify-center py-12">
-            <MyText className="text-textSub text-base">
-              所属しているグループがありません
+          <View className="items-center justify-center py-12 gap-4">
+            <MyText className="text-textSub text-base text-center">
+              所属しているグループがありません{"\n"}
+              グループを作成するか、IDで参加しましょう！
             </MyText>
+
+            <View className="flex-row gap-3 mt-2">
+              <Pressable
+                onPress={() => router.push("/group/create")}
+                className="bg-primary px-4 py-2.5 rounded-full flex-row items-center gap-1"
+              >
+                <Ionicons name="add" size={18} color="#fff" />
+                <MyText className="text-white font-bold text-sm">作成する</MyText>
+              </Pressable>
+
+              <Pressable
+                onPress={() => router.push("/group/join")}
+                className="bg-card border border-cardBorder px-4 py-2.5 rounded-full flex-row items-center gap-1"
+              >
+                <Ionicons name="key-outline" size={16} color="#333" />
+                <MyText className="text-dark font-bold text-sm">IDで参加</MyText>
+              </Pressable>
+            </View>
           </View>
         ) : (
           groups.map((g) => {
@@ -263,10 +305,10 @@ export default function GroupsScreen() {
       </ScrollView>
 
       <Pressable
-        className="absolute right-5 bottom-5 w-[52px] h-[52px] rounded-full bg-dark items-center justify-center"
+        className="absolute right-5 bottom-5 w-[52px] h-[52px] rounded-full bg-dark items-center justify-center shadow-lg"
         onPress={() => router.push("/group/create")}
       >
-        <Ionicons name="person-add" size={22} color="#fff" />
+        <Ionicons name="add" size={28} color="#fff" />
       </Pressable>
     </View>
   );

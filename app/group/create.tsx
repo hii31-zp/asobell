@@ -5,19 +5,35 @@
 グループに招待する画面*/
 
 import { MyText } from "@/compornents/MyText";
+import { auth, db } from "@/firebase";
 import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
+import {
+  addDoc,
+  arrayUnion,
+  collection,
+  doc,
+  serverTimestamp,
+  updateDoc,
+} from "firebase/firestore";
 import { useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, TextInput, View } from "react-native";
 
-export default function MyComponent() {
-  const inviteCode = "TEST-test";
-  const [copied, setCopied] = useState(false);
+const generateInviteCode = () => {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+export default function CreateGroupScreen() {
   const router = useRouter();
 
   const [groupName, setGroupName] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const validate = (groupNameVal: string) => {
     if (groupNameVal.trim().length === 0) {
@@ -26,18 +42,48 @@ export default function MyComponent() {
     return "";
   };
 
-  const handleSignup = () => {
+  const handleCreateGroup = async () => {
     const error = validate(groupName);
     if (error) {
       setErrorMessage(error);
       return;
     }
     setErrorMessage("");
-  };
 
-  const handleCopy = async () => {
-    await Clipboard.setStringAsync(inviteCode);
-    setCopied(true);
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setErrorMessage("ユーザー情報の取得に失敗しました。再ログインしてください。");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const inviteCode = generateInviteCode();
+
+      // 1. groups コレクションに新しいグループを作成
+      const groupRef = await addDoc(collection(db, "groups"), {
+        name: groupName.trim(),
+        inviteCode: inviteCode,
+        ownerId: currentUser.uid,
+        members: [currentUser.uid], // 画像の構造（members）に合わせる
+        createdAt: serverTimestamp(),
+      });
+
+      // 2. 作成したグループIDを users/{uid} の joinedGroupIds 配列に追加する（★ここがポイント）
+      const userRef = doc(db, "users", currentUser.uid);
+      await updateDoc(userRef, {
+        joinedGroupIds: arrayUnion(groupRef.id),
+      });
+
+      // 3. 元の画面に戻る
+      router.back();
+    } catch (e) {
+      console.error("Error creating group: ", e);
+      setErrorMessage("グループの作成に失敗しました。もう一度お試しください。");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -45,12 +91,12 @@ export default function MyComponent() {
       <View>
         <Pressable
           className="flex-row items-center gap-1"
-          onPress={() => {
-            router.push("../");
-          }}
+          onPress={() => router.back()}
         >
           <Ionicons name="chevron-back" size={20} color="#8B6F4E" />
-          <MyText className="text-brown text-xl font-bold ">グループ一覧に戻る</MyText>
+          <MyText className="text-brown text-xl font-bold">
+            グループ一覧に戻る
+          </MyText>
         </Pressable>
       </View>
       <View className="pt-6 p-3">
@@ -74,24 +120,32 @@ export default function MyComponent() {
                 placeholderTextColor="#B9B4A8"
                 value={groupName}
                 onChangeText={setGroupName}
+                editable={!isLoading}
               />
             </View>
           </View>
+
           <View className="min-h-[20px] pl-6">
             {errorMessage !== "" && (
-              <View>
-                <MyText className="text-danger text-sm">{errorMessage}</MyText>
-              </View>
+              <MyText className="text-danger text-sm">{errorMessage}</MyText>
             )}
           </View>
+
           <View className="pt-2 pr-4 pl-4">
             <Pressable
-              className="border-2 border-primary bg-primary active:bg-[#C14C24] h-[58px] px-4 rounded-full font-rounded items-center justify-center w-full"
-              onPress={handleSignup}
+              className={`border-2 border-primary bg-primary active:bg-[#C14C24] h-[58px] px-4 rounded-full font-rounded items-center justify-center w-full ${
+                isLoading ? "opacity-50" : ""
+              }`}
+              onPress={handleCreateGroup}
+              disabled={isLoading}
             >
-              <MyText className="text-white font-semibold text-xl">
-                作成する
-              </MyText>
+              {isLoading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <MyText className="text-white font-semibold text-xl">
+                  作成する
+                </MyText>
+              )}
             </Pressable>
           </View>
         </View>

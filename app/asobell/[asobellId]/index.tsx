@@ -1,6 +1,6 @@
 import { MyText } from "@/compornents/MyText";
 import { useUserProfile } from "@/compornents/useUserProfile";
-import { db } from "@/firebase";
+import { auth, db } from "@/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -11,7 +11,7 @@ import {
   onSnapshot,
   updateDoc,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 
 type Participant = {
@@ -51,6 +51,8 @@ type UserDocData = {
   avatarText?: string;
 };
 
+const UNIFIED_AVATAR_COLOR = "#8FC6A9";
+
 export default function AsobellDetail() {
   const router = useRouter();
   const { asobellId, groupId: searchGroupId } = useLocalSearchParams<{
@@ -59,7 +61,7 @@ export default function AsobellDetail() {
   }>();
 
   const { user, profile, loading: userLoading } = useUserProfile();
-  const myUid = user?.uid || "";
+  const myUid = auth.currentUser?.uid || user?.uid || "";
 
   const [asobell, setAsobell] = useState<AsobellData | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -79,7 +81,6 @@ export default function AsobellDetail() {
           const raw = docSnap.data() as AsobellRaw;
           const participantIds = raw.participantIds || [];
 
-          // 1. グループ名の取得
           let groupName = "グループ";
           try {
             const groupSnap = await getDoc(doc(db, "groups", searchGroupId));
@@ -90,7 +91,6 @@ export default function AsobellDetail() {
             console.error("グループ名取得失敗:", e);
           }
 
-          // 2. 参加者のUIDからユーザー情報を取得
           const participantsPromises = participantIds.map(async (uid) => {
             try {
               const uSnap = await getDoc(doc(db, "users", uid));
@@ -100,25 +100,23 @@ export default function AsobellDetail() {
                 return {
                   id: uid,
                   name,
-                  initial:
-                    uData.avatarText || name.slice(0, 2).toUpperCase(),
-                  color: uData.avatarColor || "#8FC6A9",
+                  initial: uData.avatarText || name.slice(0, 2).toUpperCase(),
+                  color: UNIFIED_AVATAR_COLOR,
                 };
               }
             } catch (e) {
-              console.error("ユーザー情報取得失敗:", e);
+              console.error(`ユーザー情報取得失敗 (${uid}):`, e);
             }
             return {
               id: uid,
               name: "メンバー",
               initial: "MB",
-              color: "#8FC6A9",
+              color: UNIFIED_AVATAR_COLOR,
             };
           });
 
           const participants = await Promise.all(participantsPromises);
 
-          // 日時のフォーマット処理
           let formattedDate = raw.startAt || "日時未設定";
           if (raw.startAt) {
             const d = new Date(raw.startAt);
@@ -165,10 +163,19 @@ export default function AsobellDetail() {
 
   if (!asobell) {
     return (
-      <View className="bg-bg flex-1 items-center justify-center p-4">
-        <MyText className="text-dark text-lg">
+      <View className="bg-bg flex-1 items-center justify-center p-6 gap-6">
+        <MyText className="text-dark text-lg text-center font-bold">
           あそベルが見つかりませんでした。
         </MyText>
+
+        <Pressable
+          className="bg-primary px-6 py-3 rounded-full active:opacity-80"
+          onPress={() => router.replace("/(tabs)")}
+        >
+          <MyText className="text-white text-base font-bold">
+            ホームに戻る
+          </MyText>
+        </Pressable>
       </View>
     );
   }
@@ -178,7 +185,6 @@ export default function AsobellDetail() {
   const isJoined = asobell.participantIds.includes(myUid);
   const isFull = participants.length >= capacity;
 
-  // 参加・キャンセルの切り替え処理
   const handleToggleJoin = async () => {
     if (!asobellId || !asobell.groupId || !myUid) return;
 
@@ -247,13 +253,13 @@ export default function AsobellDetail() {
           <View className="flex-row items-center gap-2">
             <Ionicons name="calendar-outline" size={18} color="#B8925A" />
             <MyText className="text-dark text-lg">
-              {asobell.eventDate || "日時未設定"}
+              {asobell.eventDate || "日時未定"}
             </MyText>
           </View>
           <View className="flex-row items-center gap-2">
             <Ionicons name="location-outline" size={18} color="#B8925A" />
             <MyText className="text-dark text-lg">
-              {asobell.location || "場所未設定"}
+              {asobell.location || "場所未定"}
             </MyText>
           </View>
         </View>
@@ -286,6 +292,7 @@ export default function AsobellDetail() {
             />
           </View>
 
+          {/* 参加者一覧表示 */}
           <View className="gap-3 mt-2">
             {participants.map((p) => (
               <View key={p.id} className="flex-row items-center gap-3">
@@ -306,6 +313,7 @@ export default function AsobellDetail() {
         </View>
       </View>
 
+      {/* 参加 / 参加キャンセル ボタン */}
       <View className="p-6">
         <Pressable
           disabled={!isJoined && isFull}

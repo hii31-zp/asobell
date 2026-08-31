@@ -1,108 +1,206 @@
-/*募集中のあそベル一覧が表示される*/
-
 import { MyText } from "@/compornents/MyText";
 import { NotificationButton } from "@/compornents/NotificationButton";
 import { useUserProfile } from "@/compornents/useUserProfile";
+import { auth, db } from "@/firebase";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import {
+  arrayUnion,
+  collectionGroup,
+  doc,
+  getDoc,
+  onSnapshot,
+  updateDoc,
+} from "firebase/firestore";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+
+type Participant = {
+  id: string;
+  initial: string;
+};
 
 type Asobell = {
   id: string;
+  groupId: string;
   title: string;
   date: string;
   startDateTime: string;
   capacity: number;
-  participants: { id: string; initial: string; color: string }[];
+  participants: Participant[];
+  participantIds: string[];
 };
 
-// 仮データ（後でFirestoreから取得する部分に差し替える）
-const INITIAL_ASOBELLS: Asobell[] = [
-  {
-    id: "1",
-    title: "夜ご飯いかない？☕️",
-    date: "9月18日（水）19:00〜",
-    startDateTime: "2026-09-18T19:00:00",
-    capacity: 4,
-    participants: [
-      { id: "1", initial: "YK", color: "#F5C77E" },
-      { id: "2", initial: "MF", color: "#9B8DE0" },
-    ],
-  },
-  {
-    id: "2",
-    title: "週末カラオケ行きたい",
-    date: "9月21日（土）14:00〜",
-    startDateTime: "2026-09-21T14:00:00",
-    capacity: 5,
-    participants: [{ id: "3", initial: "SK", color: "#E88BA6" }],
-  },
-  {
-    id: "3",
-    title: "ボードゲームしたい！🎲",
-    date: "9月19日（木）18:00〜",
-    startDateTime: "2026-09-19T18:00:00",
-    capacity: 4,
-    participants: [
-      { id: "4", initial: "RY", color: "#999999" },
-      { id: "5", initial: "HN", color: "#E8A16F" },
-      { id: "6", initial: "SY", color: "#222222" },
-    ],
-  },
-];
+type UserDocData = {
+  avatarText?: string;
+};
+
+const formatDisplayDate = (rawDate: any): string => {
+  if (!rawDate) return "日時未定";
+
+  let d: Date;
+  if (typeof rawDate === "object" && typeof rawDate.toDate === "function") {
+    d = rawDate.toDate();
+  } else {
+    d = new Date(rawDate);
+  }
+
+  if (isNaN(d.getTime())) {
+    return String(rawDate);
+  }
+
+  const month = d.getMonth() + 1;
+  const date = d.getDate();
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+
+  return `${month}月${date}日 ${hours}:${minutes}〜`;
+};
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [asobells, setAsobells] = useState<Asobell[]>(INITIAL_ASOBELLS);
+  const { user, profile, loading: userLoading } = useUserProfile();
+  const [asobells, setAsobells] = useState<Asobell[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  const { user, profile, loading } = useUserProfile();
+  const myUid = auth.currentUser?.uid || user?.uid || "";
+  const myAvatarText = profile?.avatarText || "??";
 
-  const myUid = user?.uid || "";
-  const myAvatarText = profile?.avatarText || "?";
+  useFocusEffect(
+    useCallback(() => {
+      if (!myUid) {
+        setDataLoading(false);
+        return;
+      }
 
-  const handleJoin = (id: string) => {
-    if (!myUid) return;
+      setDataLoading(true);
 
-    setAsobells((prev) =>
-      prev.map((a) =>
-        a.id === id && !a.participants.some((p) => p.id === myUid)
-          ? {
-              ...a,
-              participants: [
-                ...a.participants,
-                { id: myUid, initial: myAvatarText, color: "#7FC7A6" },
-              ],
-            }
-          : a
-      )
-    );
+      try {
+        const asobellGroupRef = collectionGroup(db, "asobells");
+
+        const unsub = onSnapshot(
+          asobellGroupRef,
+          async (snapshot) => {
+            const listPromises = snapshot.docs.map(async (docSnap) => {
+              const data = docSnap.data();
+              const parentGroupId = docSnap.ref.parent.parent?.id || "";
+
+              const uids: string[] = Array.isArray(data.participantIds)
+                ? data.participantIds
+                : Array.isArray(data.participantUids)
+                ? data.participantUids
+                : [];
+
+              // 参加者の UID から users/{uid} の avatarText を取得
+              const participantsPromises = uids.map(async (uid) => {
+                if (uid === myUid) {
+                  return {
+                    id: uid,
+                    initial: myAvatarText,
+                  };
+                }
+
+                try {
+                  const uSnap = await getDoc(doc(db, "users", uid));
+                  if (uSnap.exists()) {
+                    const uData = uSnap.data() as UserDocData;
+                    return {
+                      id: uid,
+                      initial: uData.avatarText || "MB",
+                    };
+                  }
+                } catch (e) {
+                  console.error(`avatarText取得失敗 (${uid}):`, e);
+                }
+
+                return {
+                  id: uid,
+                  initial: "MB",
+                };
+              });
+
+              const participants = await Promise.all(participantsPromises);
+
+              const rawStartDateTime =
+                data.startDateTime || data.startAt || data.date || "";
+
+              return {
+                id: docSnap.id,
+                groupId: parentGroupId,
+                title: data.title || "あそベル",
+                date: formatDisplayDate(rawStartDateTime),
+                startDateTime: rawStartDateTime,
+                capacity: data.capacity || data.maxParticipants || 4,
+                participantIds: uids,
+                participants,
+              };
+            });
+
+            const resolvedList = await Promise.all(listPromises);
+
+            setAsobells(resolvedList);
+            setDataLoading(false);
+          },
+          (error) => {
+            console.error("CollectionGroup Listener Error:", error);
+            setDataLoading(false);
+          }
+        );
+
+        return () => unsub();
+      } catch (e) {
+        console.error("Setup Error:", e);
+        setDataLoading(false);
+      }
+    }, [myUid, myAvatarText])
+  );
+
+  const goToDetail = (asobellId: string, groupId: string) => {
+    if (!groupId) {
+      console.warn("groupIdが存在しません:", asobellId);
+    }
+    router.push(`/asobell/${asobellId}?groupId=${groupId}`);
+  };
+
+  const handleJoin = async (groupId: string, asobellId: string) => {
+    if (!myUid || !groupId) return;
+    try {
+      const asobellRef = doc(db, "groups", groupId, "asobells", asobellId);
+      await updateDoc(asobellRef, {
+        participantIds: arrayUnion(myUid),
+      });
+    } catch (e) {
+      console.error("Join error:", e);
+    }
   };
 
   const now = new Date();
 
   const confirmedAsobells = asobells.filter((a) => {
-    const isJoined = a.participants.some((p) => p.id === myUid);
-    const isFull = a.participants.length >= a.capacity;
+    const ids = a.participantIds || [];
+    const isJoined = ids.includes(myUid);
+    const isFull = ids.length >= (a.capacity || 0);
     const isUpcoming = a.startDateTime
       ? new Date(a.startDateTime) > now
-      : false;
+      : true;
     return isJoined && isFull && isUpcoming;
   });
 
   const joiningAsobells = asobells.filter((a) => {
-    const isJoined = a.participants.some((p) => p.id === myUid );
-    const isFull = a.participants.length >= a.capacity;
+    const ids = a.participantIds || [];
+    const isJoined = ids.includes(myUid);
+    const isFull = ids.length >= (a.capacity || 0);
     return isJoined && !isFull;
   });
 
   const recruitingAsobells = asobells.filter((a) => {
-    const isJoined = a.participants.some((p) => p.id === myUid);
-    const isFull = a.participants.length >= a.capacity;
+    const ids = a.participantIds || [];
+    const isJoined = ids.includes(myUid);
+    const isFull = ids.length >= (a.capacity || 0);
     return !isJoined && !isFull;
   });
 
-  if (loading) {
+  if (userLoading || dataLoading) {
     return (
       <View className="bg-bg flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#D85A30" />
@@ -153,14 +251,16 @@ export default function HomeScreen() {
             {confirmedAsobells.map((a) => (
               <Pressable
                 key={a.id}
-                className="bg-primaryLight border border-primary/20 rounded-2xl p-4 flex-row items-center justify-between"
-                onPress={() => router.push(`/asobell/${a.id}`)}
+                className="bg-primaryLight border border-primary/20 rounded-2xl p-4 flex-row items-center justify-between active:opacity-70"
+                onPress={() => goToDetail(a.id, a.groupId)}
               >
                 <View>
-                  <MyText className="text-dark text-lg font-rouded-bold">
+                  <MyText className="text-dark text-lg font-rounded-bold">
                     {a.title}
                   </MyText>
-                  <MyText className="text-brown text-base mt-1">{a.date}</MyText>
+                  <MyText className="text-brown text-base mt-1">
+                    {a.date}
+                  </MyText>
                 </View>
                 <Ionicons name="checkmark-circle" size={22} color="#D85A30" />
               </Pressable>
@@ -171,6 +271,7 @@ export default function HomeScreen() {
         <MyText className="text-brown text-base font-rounded-bold mt-3">
           募集中のあそベル一覧
         </MyText>
+
         {recruitingAsobells.length === 0 ? (
           <View className="bg-card border border-cardBorder rounded-2xl p-5 mt-2 items-center">
             <MyText className="text-label text-base text-center leading-6">
@@ -180,16 +281,17 @@ export default function HomeScreen() {
         ) : (
           <View className="gap-2 mt-2">
             {recruitingAsobells.map((a) => {
-              const isJoined = a.participants.some((p) => p.id === myUid );
-              const isFull = a.participants.length >= a.capacity;
+              const ids = a.participantIds || [];
+              const isJoined = ids.includes(myUid);
+              const isFull = ids.length >= (a.capacity || 0);
 
               return (
                 <Pressable
                   key={a.id}
-                  className="bg-card border border-cardBorder rounded-2xl p-4"
-                  onPress={() => router.push(`/asobell/${a.id}`)}
+                  className="bg-card border border-cardBorder rounded-2xl p-4 active:opacity-80"
+                  onPress={() => goToDetail(a.id, a.groupId)}
                 >
-                  <MyText className="text-dark text-lg font-rouded-bold">
+                  <MyText className="text-dark text-lg font-bold">
                     {a.title}
                   </MyText>
                   <MyText className="text-textSub text-base mt-1">
@@ -199,40 +301,43 @@ export default function HomeScreen() {
                   <View className="flex-row items-center justify-between mt-3">
                     <MyText className="text-textSub text-sm">参加者</MyText>
                     <MyText className="text-brown text-sm font-bold">
-                      {a.participants.length}/{a.capacity}人
+                      {ids.length}/{a.capacity}人
                     </MyText>
                   </View>
                   <View className="h-[6px] bg-inputBorder rounded-full overflow-hidden mt-2">
                     <View
                       className="h-full bg-primary rounded-full"
                       style={{
-                        width: `${(a.participants.length / a.capacity) * 100}%`,
+                        width: `${(ids.length / (a.capacity || 1)) * 100}%`,
                       }}
                     />
                   </View>
 
                   <View className="flex-row items-center justify-between mt-3">
                     <View className="flex-row items-center gap-1">
-                      {a.participants.map((p) => {
-                        const isMe = p.id === myUid;
-                        return (
-                          <View
-                            key={p.id}
-                            className="w-6 h-6 rounded-full items-center justify-center"
-                            style={{ backgroundColor: p.color }}
-                          >
-                            <MyText className="text-white text-[10px] font-bold">
-                              {isMe ? myAvatarText : p.initial}
-                            </MyText>
-                          </View>
-                        );
-                      })}
+                      {(a.participants || []).map((p) => (
+                        <View
+                          key={p.id}
+                          className="w-6 h-6 rounded-full items-center justify-center"
+                          style={{ backgroundColor: "#8FC6A9" }}
+                        >
+                          <MyText className="text-white text-[10px] font-bold">
+                            {p.initial}
+                          </MyText>
+                        </View>
+                      ))}
                     </View>
 
                     <Pressable
-                      disabled={isJoined || isFull}
-                      onPress={() => handleJoin(a.id)}
-                      className={`px-3 py-1.5 rounded-full ${
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        if (!isJoined && !isFull) {
+                          handleJoin(a.groupId, a.id);
+                        } else {
+                          goToDetail(a.id, a.groupId);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-full active:opacity-70 ${
                         isJoined || isFull ? "bg-inactive" : "bg-primary"
                       }`}
                     >
@@ -244,8 +349,8 @@ export default function HomeScreen() {
                         {isJoined
                           ? "参加予定 ✓"
                           : isFull
-                            ? "満員"
-                            : "あそべる！"}
+                          ? "満員"
+                          : "あそべる！"}
                       </MyText>
                     </Pressable>
                   </View>
@@ -268,13 +373,15 @@ export default function HomeScreen() {
         ) : (
           <View className="gap-2 mt-2">
             {joiningAsobells.map((a) => {
-              const isJoined = a.participants.some((p) => p.id === myUid );
-              const isFull = a.participants.length >= a.capacity;
+              const ids = a.participantIds || [];
+              const isJoined = ids.includes(myUid);
+              const isFull = ids.length >= (a.capacity || 0);
+
               return (
                 <Pressable
                   key={a.id}
-                  className="bg-card border border-cardBorder rounded-2xl p-4"
-                  onPress={() => router.push(`/asobell/${a.id}`)}
+                  className="bg-card border border-cardBorder rounded-2xl p-4 active:opacity-80"
+                  onPress={() => goToDetail(a.id, a.groupId)}
                 >
                   <MyText className="text-dark text-lg font-bold">
                     {a.title}
@@ -286,25 +393,25 @@ export default function HomeScreen() {
                   <View className="flex-row items-center justify-between mt-3">
                     <MyText className="text-textSub text-sm">参加者</MyText>
                     <MyText className="text-brown text-sm font-bold">
-                      {a.participants.length}/{a.capacity}人
+                      {ids.length}/{a.capacity}人
                     </MyText>
                   </View>
                   <View className="h-[6px] bg-inputBorder rounded-full overflow-hidden mt-2">
                     <View
                       className="h-full bg-primary rounded-full"
                       style={{
-                        width: `${(a.participants.length / a.capacity) * 100}%`,
+                        width: `${(ids.length / (a.capacity || 1)) * 100}%`,
                       }}
                     />
                   </View>
 
                   <View className="flex-row items-center justify-between mt-3">
                     <View className="flex-row items-center gap-1">
-                      {a.participants.map((p) => (
+                      {(a.participants || []).map((p) => (
                         <View
                           key={p.id}
                           className="w-6 h-6 rounded-full items-center justify-center"
-                          style={{ backgroundColor: p.color }}
+                          style={{ backgroundColor: "#8FC6A9" }}
                         >
                           <MyText className="text-white text-[10px] font-bold">
                             {p.initial}
@@ -312,12 +419,13 @@ export default function HomeScreen() {
                         </View>
                       ))}
                     </View>
+
                     <Pressable
-                      disabled={isJoined || isFull}
-                      onPress={() => {
-                        handleJoin(a.id);
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        goToDetail(a.id, a.groupId);
                       }}
-                      className={`px-3 py-1.5 rounded-full ${
+                      className={`px-3 py-1.5 rounded-full active:opacity-70 ${
                         isJoined || isFull ? "bg-inactive" : "bg-primary"
                       }`}
                     >
@@ -329,8 +437,8 @@ export default function HomeScreen() {
                         {isJoined
                           ? "参加予定 ✓"
                           : isFull
-                            ? "満員"
-                            : "あそべる！"}
+                          ? "満員"
+                          : "あそべる！"}
                       </MyText>
                     </Pressable>
                   </View>
@@ -342,7 +450,7 @@ export default function HomeScreen() {
       </ScrollView>
 
       <Pressable
-        className="absolute right-5 bottom-5 w-[52px] h-[52px] rounded-full bg-dark items-center justify-center"
+        className="absolute right-5 bottom-5 w-[52px] h-[52px] rounded-full bg-dark items-center justify-center active:opacity-80"
         onPress={() => router.push("/asobell/create")}
       >
         <View className="w-6 h-6 items-center justify-center">

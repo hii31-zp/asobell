@@ -58,12 +58,10 @@ export default function SettingsScreen() {
         onPress={() => router.push("/setting/profile")}
       >
         {loading ? (
-          // 読み込み中表示
           <View className="w-14 h-14 rounded-full bg-card items-center justify-center border border-inputBorder">
             <ActivityIndicator size="small" color="#D85A30" />
           </View>
         ) : (
-          // Firestore のデータ（avatarText）を表示
           <View className="w-14 h-14 rounded-full bg-[#7FC7A6] items-center justify-center">
             <MyText className="text-white text-xl font-bold">
               {profile?.avatarText || "?"}

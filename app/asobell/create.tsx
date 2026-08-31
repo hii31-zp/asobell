@@ -125,6 +125,18 @@ export default function CreateAsobellScreen() {
       setErrorMessage(error);
       return;
     }
+
+    if (!selectedGroup) {
+      setErrorMessage("グループを選択してください");
+      return;
+    }
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      Alert.alert("エラー", "ログイン情報が見つかりません。");
+      return;
+    }
+
     setErrorMessage("");
     setLoading(true);
 
@@ -134,18 +146,25 @@ export default function CreateAsobellScreen() {
 
       const payload = {
         title: asobellTitle.trim(),
-        targetGroup: selectedGroup ? selectedGroup.name : "指定なし",
-        targetGroupId: selectedGroup ? selectedGroup.id : null,
         description: description.trim(),
-        place: place.trim(),
+        location: place.trim(),
         capacity: capacity ?? 4,
-        startAt: startAtDate,
-        endAt: endAtDate,
+        maxParticipants: capacity ?? 4,
+        startAt: startAtDate ? startAtDate.toISOString() : null,
+        endAt: endAtDate ? endAtDate.toISOString() : null,
+        startDate: startDate || null,
+        status: "open",
+        groupId: selectedGroup.id,
+        createdBy: currentUser.uid,
+        participantIds: [currentUser.uid],
         createdAt: serverTimestamp(),
-        userId: auth.currentUser?.uid,
+        updatedAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, "asobells"), payload);
+      await addDoc(
+        collection(db, "groups", selectedGroup.id, "asobells"),
+        payload,
+      );
 
       Alert.alert("成功", "あそベルを作成しました！", [
         {
