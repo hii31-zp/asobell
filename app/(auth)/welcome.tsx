@@ -1,26 +1,28 @@
-/*あそベルのロゴと、新規登録・ログインボタンの表示*/
-
 import { MyText } from "@/compornents/MyText";
 import { useRouter } from "expo-router";
-import { Pressable, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
 
 export default function MyComponent() {
   const router = useRouter();
 
   return (
     <View className="bg-bg p-5 flex-1">
-      <View className="">
-        <MyText className="">logo.img</MyText>
+      <View className="items-center justify-center mt-10">
+        <Image
+          source={require("@/assets/images/logo.png")}
+          style={{ width: 280, height: 280 }}
+          resizeMode="contain"
+        />
       </View>
       <View className="justify-center items-center">
-        <MyText className="text-5xl font-bold justify-center items-center">
+        <MyText className="text-5xl font-bold justify-center items-center pt-14">
           <MyText className="text-dark">
             あそ
             <MyText className="text-primary">ベル</MyText>
           </MyText>
         </MyText>
       </View>
-      <View className="mt-6 gap-3 p-8">
+      <View className="mt-3 gap-3 p-8">
         <Pressable
           className="border-2 border-primary bg-primary active:bg-[#C14C24] h-[58px] px-6 rounded-full items-center justify-center"
           onPress={() => {

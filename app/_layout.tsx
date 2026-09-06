@@ -1,13 +1,13 @@
-import { SplashScreen, Stack, useRouter, useSegments } from "expo-router";
-import { useEffect, useState } from "react";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import "../global.css";
-
 import {
   MPLUSRounded1c_400Regular,
   MPLUSRounded1c_700Bold,
   useFonts,
 } from "@expo-google-fonts/m-plus-rounded-1c";
+import { SplashScreen, Stack, useRouter, useSegments } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import "../global.css";
 
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../firebase";
@@ -58,10 +58,13 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF8F0" }}>
-        <Stack screenOptions={{ headerShown: false }} />
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <>
+      <StatusBar style="dark" />
+      <SafeAreaProvider>
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF8F0" }}>
+          <Stack screenOptions={{ headerShown: false }} />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </>
   );
 }
