@@ -90,7 +90,7 @@ export default function JoinGroupScreen() {
           </MyText>
           <TextInput
             className="bg-card border border-cardBorder rounded-2xl px-4 py-3 text-dark text-base"
-            placeholder="例: ETb2U4xi"
+            placeholder="8桁のコードを入力して参加"
             placeholderTextColor="#A0A0A0"
             value={groupIdInput}
             onChangeText={setGroupIdInput}

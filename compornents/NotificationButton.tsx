@@ -10,11 +10,15 @@ type Notification = {
   read: boolean;
 };
 
-// 仮データ（後で「あそベルの人数が定員に達した」タイミングで自動生成する処理に差し替える）
 const NOTIFICATIONS: Notification[] = [
-  { id: "1", asobellTitle: "夜ご飯いかない？", time: "3時間前", read: false },
-  { id: "2", asobellTitle: "週末カラオケ行きたい", time: "1日前", read: false },
-  { id: "3", asobellTitle: "バーベキュー計画", time: "3日前", read: true },
+  {
+    id: "1",
+    asobellTitle: "みんな来れたら部室で練習したい！",
+    time: "20分前",
+    read: false,
+  },
+  { id: "2", asobellTitle: "夜ごはん行こ！", time: "2日前", read: true },
+  { id: "3", asobellTitle: "カラオケ", time: "8日前", read: true },
 ];
 
 export function NotificationButton() {
