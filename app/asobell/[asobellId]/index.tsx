@@ -11,7 +11,7 @@ import {
   onSnapshot,
   updateDoc,
 } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
 type Participant = {
@@ -25,6 +25,7 @@ type AsobellRaw = {
   title: string;
   description?: string;
   startAt?: string;
+  endAt?: string;
   location?: string;
   maxParticipants: number;
   groupId: string;
@@ -36,6 +37,7 @@ type AsobellData = {
   title: string;
   description?: string;
   eventDate?: string;
+  endDate?: string;
   location?: string;
   capacity: number;
   groupId: string;
@@ -128,10 +130,21 @@ export default function AsobellDetail() {
             }
           }
 
+          let formattedEndDate: string | undefined;
+          if (raw.endAt) {
+            const endD = new Date(raw.endAt);
+            if (!isNaN(endD.getTime())) {
+              formattedEndDate = `${String(endD.getHours()).padStart(2, "0")}:${String(
+                endD.getMinutes(),
+              ).padStart(2, "0")}`;
+            }
+          }
+
           setAsobell({
             title: raw.title || "無題のあそベル",
             description: raw.description,
             eventDate: formattedDate,
+            endDate: formattedEndDate,
             location: raw.location,
             capacity: raw.maxParticipants || 4,
             groupId: searchGroupId,
@@ -294,6 +307,7 @@ export default function AsobellDetail() {
             <Ionicons name="calendar-outline" size={18} color="#B8925A" />
             <MyText className="text-dark text-lg">
               {asobell.eventDate || "日時未定"}
+              {asobell.endDate ? `${asobell.endDate}` : ""}
             </MyText>
           </View>
           <View className="flex-row items-center gap-2">

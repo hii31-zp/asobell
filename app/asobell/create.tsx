@@ -103,6 +103,34 @@ export default function CreateAsobellScreen() {
     return "";
   };
 
+  const validateDateTime = (
+    startDate: string | null,
+    startTime: Date | null,
+    endDate: string | null,
+    endTime: Date | null,
+  ): string => {
+    const startHasDate = !!startDate;
+    const startHasTime = !!startTime;
+    if (startHasDate !== startHasTime) {
+      return "日時を設定する場合は日付と時間の両方を入力してください。";
+    }
+
+    const endHasDate = !!endDate;
+    const endHasTime = !!endTime;
+    if (endHasDate !== endHasTime) {
+      return "日時を設定する場合は日付と時間の両方を入力してください。";
+    }
+
+    const startFilled = startHasDate && startHasTime;
+    const endFilled = endHasDate && endHasTime;
+
+    if (endFilled && !startFilled) {
+      return "日時を指定する場合は開始時間も入力してください。";
+    }
+
+    return "";
+  };
+
   const combineDateAndTime = (
     dateStr: string | null,
     timeObj: Date | null,
@@ -123,6 +151,17 @@ export default function CreateAsobellScreen() {
     const error = validate();
     if (error) {
       setErrorMessage(error);
+      return;
+    }
+
+    const dateTimeError = validateDateTime(
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+    );
+    if (dateTimeError) {
+      setErrorMessage(dateTimeError);
       return;
     }
 
@@ -157,6 +196,8 @@ export default function CreateAsobellScreen() {
         groupId: selectedGroup.id,
         createdBy: currentUser.uid,
         participantIds: [currentUser.uid],
+        filledAt: null,
+        notificationReadBy: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };

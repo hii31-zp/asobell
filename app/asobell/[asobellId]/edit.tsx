@@ -74,13 +74,12 @@ export default function AsobellEdit() {
               setStartTime(d);
             }
           } else {
-            // 従来の startDate / startTime フィールドの互換処理
             if (data.startDate) setStartDate(data.startDate);
             if (data.startTime) {
               setStartTime(
                 data.startTime?.toDate
                   ? data.startTime.toDate()
-                  : new Date(data.startTime)
+                  : new Date(data.startTime),
               );
             }
           }
@@ -100,7 +99,7 @@ export default function AsobellEdit() {
               setEndTime(
                 data.endTime?.toDate
                   ? data.endTime.toDate()
-                  : new Date(data.endTime)
+                  : new Date(data.endTime),
               );
             }
           }
@@ -122,10 +121,49 @@ export default function AsobellEdit() {
     return "";
   };
 
+  const validateDateTime = (
+    startDate: string | null,
+    startTime: Date | null,
+    endDate: string | null,
+    endTime: Date | null,
+  ): string => {
+    const startHasDate = !!startDate;
+    const startHasTime = !!startTime;
+    if (startHasDate !== startHasTime) {
+      return "日時を設定する場合は日付と時間の両方を入力してください。";
+    }
+
+    const endHasDate = !!endDate;
+    const endHasTime = !!endTime;
+    if (endHasDate !== endHasTime) {
+      return "日時を設定する場合は日付と時間の両方を入力してください。";
+    }
+
+    const startFilled = startHasDate && startHasTime;
+    const endFilled = endHasDate && endHasTime;
+
+    if (endFilled && !startFilled) {
+      return "日時を指定する場合は開始時間も入力してください。";
+    }
+
+    return "";
+  };
+
   const handleUpdate = async () => {
     const error = validate(asobellTitle);
     if (error) {
       setErrorMessage(error);
+      return;
+    }
+
+    const dateTimeError = validateDateTime(
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+    );
+    if (dateTimeError) {
+      setErrorMessage(dateTimeError);
       return;
     }
     setErrorMessage("");
@@ -148,6 +186,17 @@ export default function AsobellEdit() {
           timeStr = `${hh}:${mm}`;
         }
         startAtString = `${startDate}T${timeStr}:00`;
+      }
+
+      let endAtString: string | null = null;
+      if (endDate) {
+        let timeStr = "00:00";
+        if (endTime) {
+          const hh = String(endTime.getHours()).padStart(2, "0");
+          const mm = String(endTime.getMinutes()).padStart(2, "0");
+          timeStr = `${hh}:${mm}`;
+        }
+        endAtString = `${endDate}T${timeStr}:00`;
       }
 
       await updateDoc(docRef, {
@@ -287,7 +336,9 @@ export default function AsobellEdit() {
             </View>
 
             <View className="flex-row items-center gap-2">
-              <MyText className="text-label text-lg font-bold w-10">開始</MyText>
+              <MyText className="text-label text-lg font-bold w-10">
+                開始
+              </MyText>
 
               <Pressable
                 onPress={() => setShowStartCalendar(true)}
@@ -369,6 +420,91 @@ export default function AsobellEdit() {
                 </Modal>
               </View>
             </View>
+            <View className="flex-row items-center gap-2 mt-2">
+              <MyText className="text-label text-lg font-bold w-10">
+                終了
+              </MyText>
+
+              <Pressable
+                onPress={() => setShowEndCalendar(true)}
+                className="flex-1"
+              >
+                <View className="bg-card border border-inputBorder rounded-2xl px-4 py-3">
+                  <MyText
+                    className={endDate ? "text-dark" : "text-placeholder"}
+                  >
+                    {endDate || "日付を選択"}
+                  </MyText>
+                </View>
+              </Pressable>
+
+              <Modal
+                visible={showEndCalendar}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowEndCalendar(false)}
+              >
+                <Pressable
+                  className="flex-1 bg-black/40 items-center justify-center"
+                  onPress={() => setShowEndCalendar(false)}
+                >
+                  <View className="bg-white rounded-2xl overflow-hidden w-[320px]">
+                    <Calendar
+                      theme={compactCalendarTheme}
+                      onDayPress={(day) => {
+                        setEndDate(day.dateString);
+                        setShowEndCalendar(false);
+                      }}
+                    />
+                  </View>
+                </Pressable>
+              </Modal>
+
+              <View className="flex-1 relative z-20">
+                <Pressable
+                  onPress={() => setShowEndTimePicker(true)}
+                  className="flex-1"
+                >
+                  <View className="bg-card border border-inputBorder rounded-2xl px-4 py-3">
+                    <MyText
+                      className={endTime ? "text-dark" : "text-placeholder"}
+                    >
+                      {endTime
+                        ? endTime.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "時刻を選択"}
+                    </MyText>
+                  </View>
+                </Pressable>
+
+                <Modal
+                  visible={showEndTimePicker}
+                  transparent
+                  animationType="fade"
+                  onRequestClose={() => setShowEndTimePicker(false)}
+                >
+                  <Pressable
+                    className="flex-1 bg-black/40 items-center justify-center"
+                    onPress={() => setShowEndTimePicker(false)}
+                  >
+                    <View className="bg-white rounded-2xl overflow-hidden w-[300px] items-center py-4">
+                      <DateTimePicker
+                        value={endTime || new Date()}
+                        mode="time"
+                        themeVariant="light"
+                        display="spinner"
+                        onChange={(event, selectedTime) => {
+                          setShowEndTimePicker(false);
+                          if (selectedTime) setEndTime(selectedTime);
+                        }}
+                      />
+                    </View>
+                  </Pressable>
+                </Modal>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -395,7 +531,9 @@ export default function AsobellEdit() {
             <Pressable onPress={() => setShowCapacityPicker(true)}>
               <View className="bg-card border border-inputBorder w-[80px] rounded-2xl px-4 py-3 items-center">
                 <MyText
-                  className={capacity ? "text-dark font-bold" : "text-placeholder"}
+                  className={
+                    capacity ? "text-dark font-bold" : "text-placeholder"
+                  }
                 >
                   {capacity ? `${capacity}人` : "例：4人"}
                 </MyText>

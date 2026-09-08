@@ -1,4 +1,4 @@
-/*グループ一覧(app/(tabs)/group.tsx/からの遷移)*/
+// グループ一覧(app/(tabs)/group.tsx/からの遷移)*/
 import { MyText } from "@/compornents/MyText";
 import { useUserProfile } from "@/compornents/useUserProfile";
 import { db } from "@/firebase";
@@ -38,8 +38,8 @@ type Asobell = {
   id: string;
   title: string;
   description?: string;
-  startAt?: string;
-  endAt?: string;
+  startDateTime?: string;
+  endDateTime?: string;
   maxParticipants: number;
   participantIds: string[];
   participants: Participant[];
@@ -110,8 +110,7 @@ export default function GroupDetail() {
                 const name = uData.nickname || uData.name || "メンバー";
                 return {
                   id: uid,
-                  initial:
-                    uData.avatarText || name.slice(0, 2).toUpperCase(),
+                  initial: uData.avatarText || name.slice(0, 2).toUpperCase(),
                   color: uData.avatarColor || "#8FC6A9",
                 };
               }
@@ -127,8 +126,8 @@ export default function GroupDetail() {
             id: d.id,
             title: raw.title || "無題のあそベル",
             description: raw.description || "",
-            startAt: raw.startAt,
-            endAt: raw.endAt,
+            startDateTime: raw.startAt,
+            endDateTime: raw.endAt,
             maxParticipants: raw.maxParticipants || 4,
             participantIds,
             participants,
@@ -142,7 +141,7 @@ export default function GroupDetail() {
       (error) => {
         console.error("あそベルデータ取得エラー:", error);
         setAsobellsLoading(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -169,7 +168,7 @@ export default function GroupDetail() {
   const confirmedAsobells = asobells.filter((a) => {
     const isJoined = a.participantIds.includes(myUid);
     const isFull = a.participantIds.length >= a.maxParticipants;
-    const isUpcoming = a.startAt ? new Date(a.startAt) > now : true;
+    const isUpcoming = a.startDateTime ? new Date(a.startDateTime) > now : true;
     return isJoined && isFull && isUpcoming;
   });
 
@@ -185,13 +184,63 @@ export default function GroupDetail() {
     return isJoined && !isFull;
   });
 
-  const formatDate = (startAt?: string) => {
-    if (!startAt) return "日時未設定";
-    const d = new Date(startAt);
-    if (isNaN(d.getTime())) return startAt;
-    return `${d.getMonth() + 1}月${d.getDate()}日 ${String(
-      d.getHours()
-    ).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}〜`;
+  const formatDisplayDate = (rawDate: any): string => {
+    if (!rawDate) return "日時未定";
+
+    let d: Date;
+    if (typeof rawDate === "object" && typeof rawDate.toDate === "function") {
+      d = rawDate.toDate();
+    } else {
+      d = new Date(rawDate);
+    }
+
+    if (isNaN(d.getTime())) {
+      return String(rawDate);
+    }
+
+    const month = d.getMonth() + 1;
+    const date = d.getDate();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+
+    return `${month}月${date}日 ${hours}:${minutes}〜`;
+  };
+
+  const formatEndTime = (startRaw: any, endRaw: any): string => {
+    if (!endRaw) return "";
+
+    let startD: Date;
+    if (typeof startRaw === "object" && typeof startRaw.toDate === "function") {
+      startD = startRaw.toDate();
+    } else {
+      startD = new Date(startRaw);
+    }
+
+    let endD: Date;
+    if (typeof endRaw === "object" && typeof endRaw.toDate === "function") {
+      endD = endRaw.toDate();
+    } else {
+      endD = new Date(endRaw);
+    }
+
+    if (isNaN(endD.getTime())) return "";
+
+    const hours = String(endD.getHours()).padStart(2, "0");
+    const minutes = String(endD.getMinutes()).padStart(2, "0");
+
+    const isDifferentDay =
+      !isNaN(startD.getTime()) &&
+      (startD.getFullYear() !== endD.getFullYear() ||
+        startD.getMonth() !== endD.getMonth() ||
+        startD.getDate() !== endD.getDate());
+
+    if (isDifferentDay) {
+      const month = endD.getMonth() + 1;
+      const date = endD.getDate();
+      return `${month}月${date}日 ${hours}:${minutes}`;
+    }
+
+    return `${hours}:${minutes}`;
   };
 
   if (profileLoading || groupLoading || asobellsLoading) {
@@ -263,7 +312,10 @@ export default function GroupDetail() {
                 <View>
                   <MyText className="text-dark text-lg">{a.title}</MyText>
                   <MyText className="text-brown text-base mt-1">
-                    {formatDate(a.startAt)}
+                    {formatDisplayDate(a.startDateTime)}
+                    {a.endDateTime
+                      ? formatEndTime(a.startDateTime, a.endDateTime)
+                      : ""}
                   </MyText>
                 </View>
                 <Ionicons name="checkmark-circle" size={22} color="#D85A30" />
@@ -297,7 +349,10 @@ export default function GroupDetail() {
                 >
                   <MyText className="text-dark text-lg">{a.title}</MyText>
                   <MyText className="text-textSub text-base mt-1">
-                    {formatDate(a.startAt)}
+                    {formatDisplayDate(a.startDateTime)}
+                    {a.endDateTime
+                      ? formatEndTime(a.startDateTime, a.endDateTime)
+                      : ""}
                   </MyText>
 
                   <View className="flex-row items-center justify-between mt-3">
@@ -350,8 +405,8 @@ export default function GroupDetail() {
                         {isJoined
                           ? "参加予定 ✓"
                           : isFull
-                          ? "満員"
-                          : "あそべる！"}
+                            ? "満員"
+                            : "あそべる！"}
                       </MyText>
                     </Pressable>
                   </View>
@@ -386,7 +441,10 @@ export default function GroupDetail() {
                 >
                   <MyText className="text-dark text-lg">{a.title}</MyText>
                   <MyText className="text-textSub text-base mt-1">
-                    {formatDate(a.startAt)}
+                    {formatDisplayDate(a.startDateTime)}
+                    {a.endDateTime
+                      ? formatEndTime(a.startDateTime, a.endDateTime)
+                      : ""}
                   </MyText>
 
                   <View className="flex-row items-center justify-between mt-3">
@@ -439,8 +497,8 @@ export default function GroupDetail() {
                         {isJoined
                           ? "参加予定 ✓"
                           : isFull
-                          ? "満員"
-                          : "あそべる！"}
+                            ? "満員"
+                            : "あそべる！"}
                       </MyText>
                     </Pressable>
                   </View>

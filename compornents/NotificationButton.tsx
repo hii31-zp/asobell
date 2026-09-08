@@ -8,29 +8,28 @@ type Notification = {
   asobellTitle: string;
   time: string;
   read: boolean;
+  asobellId: string;
+  groupId: string;
 };
 
-const NOTIFICATIONS: Notification[] = [
-  {
-    id: "1",
-    asobellTitle: "みんな来れたら部室で練習したい！",
-    time: "20分前",
-    read: false,
-  },
-  { id: "2", asobellTitle: "夜ごはん行こ！", time: "2日前", read: true },
-  { id: "3", asobellTitle: "カラオケ", time: "8日前", read: true },
-];
+type Props = {
+  notifications: Notification[];
+  onPressNotification: (asobellId: string, groupId: string) => void;
+  onOpen: () => void;
+};
 
-export function NotificationButton() {
-  const [notifications, setNotifications] =
-    useState<Notification[]>(NOTIFICATIONS);
+export function NotificationButton({
+  notifications,
+  onPressNotification,
+  onOpen
+}: Props) {
+
   const [showModal, setShowModal] = useState(false);
-
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const openModal = () => {
     setShowModal(true);
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    onOpen();
   };
 
   return (
@@ -99,8 +98,9 @@ export function NotificationButton() {
                 </View>
               ) : (
                 notifications.map((n) => (
-                  <View
+                  <Pressable
                     key={n.id}
+                    onPress={() => onPressNotification(n.asobellId, n.groupId)}
                     style={{
                       paddingHorizontal: 16,
                       paddingVertical: 12,
@@ -124,7 +124,7 @@ export function NotificationButton() {
                         {n.time}
                       </MyText>
                     </View>
-                  </View>
+                  </Pressable>
                 ))
               )}
             </ScrollView>

@@ -1,3 +1,5 @@
+// app/(tabs)/index.tsx
+
 import { MyText } from "@/compornents/MyText";
 import { NotificationButton } from "@/compornents/NotificationButton";
 import { useUserProfile } from "@/compornents/useUserProfile";
@@ -12,7 +14,7 @@ import {
   onSnapshot,
   updateDoc,
 } from "firebase/firestore";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 
 type Participant = {
@@ -26,9 +28,12 @@ type Asobell = {
   title: string;
   date: string;
   startDateTime: string;
+  endDateTime?: string;
   capacity: number;
   participants: Participant[];
   participantIds: string[];
+  filledAt?: string;
+  notificationReadBy?: string[];
 };
 
 type UserDocData = {
@@ -57,6 +62,43 @@ const formatDisplayDate = (rawDate: any): string => {
   return `${month}月${date}日 ${hours}:${minutes}〜`;
 };
 
+const formatEndTime = (startRaw: any, endRaw: any): string => {
+  if (!endRaw) return "";
+
+  let startD: Date;
+  if (typeof startRaw === "object" && typeof startRaw.toDate === "function") {
+    startD = startRaw.toDate();
+  } else {
+    startD = new Date(startRaw);
+  }
+
+  let endD: Date;
+  if (typeof endRaw === "object" && typeof endRaw.toDate === "function") {
+    endD = endRaw.toDate();
+  } else {
+    endD = new Date(endRaw);
+  }
+
+  if (isNaN(endD.getTime())) return "";
+
+  const hours = String(endD.getHours()).padStart(2, "0");
+  const minutes = String(endD.getMinutes()).padStart(2, "0");
+
+  const isDifferentDay =
+    !isNaN(startD.getTime()) &&
+    (startD.getFullYear() !== endD.getFullYear() ||
+      startD.getMonth() !== endD.getMonth() ||
+      startD.getDate() !== endD.getDate());
+
+  if (isDifferentDay) {
+    const month = endD.getMonth() + 1;
+    const date = endD.getDate();
+    return `${month}月${date}日 ${hours}:${minutes}`;
+  }
+
+  return `${hours}:${minutes}`;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, profile, loading: userLoading } = useUserProfile();
@@ -65,6 +107,48 @@ export default function HomeScreen() {
 
   const myUid = auth.currentUser?.uid || user?.uid || "";
   const myAvatarText = profile?.avatarText || "??";
+
+  const formatElapsedTime = (filledAt?: string): string => {
+    if (!filledAt) return "";
+    const filled = new Date(filledAt);
+    if (isNaN(filled.getTime())) return "";
+
+    const diffMs = Date.now() - filled.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+
+    if (diffMin < 1) return "たった今";
+    if (diffMin < 60) return `${diffMin}分前`;
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour < 24) return `${diffHour}時間前`;
+    const diffDay = Math.floor(diffHour / 24);
+    return `${diffDay}日前`;
+  };
+
+  const maxedAsobells = asobells.filter((a) => {
+    const ids = a.participantIds || [];
+    return ids.length >= (a.capacity || 0);
+  });
+
+  const notifications = maxedAsobells.map((a) => ({
+    id: a.id,
+    asobellTitle: a.title,
+    time: formatElapsedTime(a.filledAt),
+    read: (a.notificationReadBy || []).includes(myUid),
+    asobellId: a.id,
+    groupId: a.groupId,
+  }));
+
+  const markAsRead = async (asobellId: string, groupId: string) => {
+    if (!myUid) return;
+    try {
+      const asobellRef = doc(db, "groups", groupId, "asobells", asobellId);
+      await updateDoc(asobellRef, {
+        notificationReadBy: arrayUnion(myUid),
+      });
+    } catch (e) {
+      console.error("既読処理エラー:", e);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -88,10 +172,9 @@ export default function HomeScreen() {
               const uids: string[] = Array.isArray(data.participantIds)
                 ? data.participantIds
                 : Array.isArray(data.participantUids)
-                ? data.participantUids
-                : [];
+                  ? data.participantUids
+                  : [];
 
-              // 参加者の UID から users/{uid} の avatarText を取得
               const participantsPromises = uids.map(async (uid) => {
                 if (uid === myUid) {
                   return {
@@ -123,6 +206,7 @@ export default function HomeScreen() {
 
               const rawStartDateTime =
                 data.startDateTime || data.startAt || data.date || "";
+              const rawEndDateTime = data.endDateTime || data.endAt || "";
 
               return {
                 id: docSnap.id,
@@ -130,6 +214,7 @@ export default function HomeScreen() {
                 title: data.title || "あそベル",
                 date: formatDisplayDate(rawStartDateTime),
                 startDateTime: rawStartDateTime,
+                endDateTime: rawEndDateTime,
                 capacity: data.capacity || data.maxParticipants || 4,
                 participantIds: uids,
                 participants,
@@ -144,7 +229,7 @@ export default function HomeScreen() {
           (error) => {
             console.error("CollectionGroup Listener Error:", error);
             setDataLoading(false);
-          }
+          },
         );
 
         return () => unsub();
@@ -152,7 +237,7 @@ export default function HomeScreen() {
         console.error("Setup Error:", e);
         setDataLoading(false);
       }
-    }, [myUid, myAvatarText])
+    }, [myUid, myAvatarText]),
   );
 
   const goToDetail = (asobellId: string, groupId: string) => {
@@ -162,12 +247,20 @@ export default function HomeScreen() {
     router.push(`/asobell/${asobellId}?groupId=${groupId}`);
   };
 
-  const handleJoin = async (groupId: string, asobellId: string) => {
+  const handleJoin = async (
+    groupId: string,
+    asobellId: string,
+    currentCount: number,
+    capacity: number,
+  ) => {
     if (!myUid || !groupId) return;
     try {
       const asobellRef = doc(db, "groups", groupId, "asobells", asobellId);
+      const willBeFull = currentCount + 1 >= capacity;
+
       await updateDoc(asobellRef, {
         participantIds: arrayUnion(myUid),
+        ...(willBeFull ? { filledAt: new Date().toISOString() } : {}),
       });
     } catch (e) {
       console.error("Join error:", e);
@@ -180,9 +273,7 @@ export default function HomeScreen() {
     const ids = a.participantIds || [];
     const isJoined = ids.includes(myUid);
     const isFull = ids.length >= (a.capacity || 0);
-    const isUpcoming = a.startDateTime
-      ? new Date(a.startDateTime) > now
-      : true;
+    const isUpcoming = a.startDateTime ? new Date(a.startDateTime) > now : true;
     return isJoined && isFull && isUpcoming;
   });
 
@@ -224,7 +315,19 @@ export default function HomeScreen() {
               style={{ marginLeft: 6 }}
             />
           </View>
-          <NotificationButton />
+          <NotificationButton
+            notifications={notifications}
+            onPressNotification={(asobellId, groupId) => {
+              router.push(`/asobell/${asobellId}?groupId=${groupId}`);
+            }}
+            onOpen={() => {
+              maxedAsobells.forEach((a) => {
+                if (!(a.notificationReadBy || []).includes(myUid)) {
+                  markAsRead(a.id, a.groupId);
+                }
+              });
+            }}
+          />
         </View>
         <MyText className="text-textSub text-base mt-1">
           仲間と気軽に、集まろう
@@ -260,6 +363,9 @@ export default function HomeScreen() {
                   </MyText>
                   <MyText className="text-brown text-base mt-1">
                     {a.date}
+                    {a.endDateTime
+                      ? formatEndTime(a.startDateTime, a.endDateTime)
+                      : ""}
                   </MyText>
                 </View>
                 <Ionicons name="checkmark-circle" size={22} color="#D85A30" />
@@ -296,6 +402,9 @@ export default function HomeScreen() {
                   </MyText>
                   <MyText className="text-textSub text-base mt-1">
                     {a.date}
+                    {a.endDateTime
+                      ? formatEndTime(a.startDateTime, a.endDateTime)
+                      : ""}
                   </MyText>
 
                   <View className="flex-row items-center justify-between mt-3">
@@ -332,7 +441,7 @@ export default function HomeScreen() {
                       onPress={(e) => {
                         e.stopPropagation();
                         if (!isJoined && !isFull) {
-                          handleJoin(a.groupId, a.id);
+                          handleJoin(a.groupId, a.id, ids.length, a.capacity);
                         } else {
                           goToDetail(a.id, a.groupId);
                         }
@@ -349,8 +458,8 @@ export default function HomeScreen() {
                         {isJoined
                           ? "参加予定 ✓"
                           : isFull
-                          ? "満員"
-                          : "あそべる！"}
+                            ? "満員"
+                            : "あそべる！"}
                       </MyText>
                     </Pressable>
                   </View>
@@ -388,6 +497,9 @@ export default function HomeScreen() {
                   </MyText>
                   <MyText className="text-textSub text-base mt-1">
                     {a.date}
+                    {a.endDateTime
+                      ? formatEndTime(a.startDateTime, a.endDateTime)
+                      : ""}
                   </MyText>
 
                   <View className="flex-row items-center justify-between mt-3">
@@ -437,8 +549,8 @@ export default function HomeScreen() {
                         {isJoined
                           ? "参加予定 ✓"
                           : isFull
-                          ? "満員"
-                          : "あそべる！"}
+                            ? "満員"
+                            : "あそべる！"}
                       </MyText>
                     </Pressable>
                   </View>
