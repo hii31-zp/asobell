@@ -21,9 +21,8 @@ type Props = {
 export function NotificationButton({
   notifications,
   onPressNotification,
-  onOpen
+  onOpen,
 }: Props) {
-
   const [showModal, setShowModal] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -119,9 +118,6 @@ export function NotificationButton({
                     <View style={{ flex: 1 }}>
                       <MyText className="text-dark text-base leading-5">
                         「{n.asobellTitle}」の人数がそろいました🎉
-                      </MyText>
-                      <MyText className="text-textSub text-[10px] mt-1">
-                        {n.time}
                       </MyText>
                     </View>
                   </Pressable>
