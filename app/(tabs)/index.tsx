@@ -8,7 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   arrayUnion,
-  collectionGroup,
+  collection,
   doc,
   getDoc,
   onSnapshot,
@@ -159,85 +159,107 @@ export default function HomeScreen() {
 
       setDataLoading(true);
 
+      const joinedGroupIds: string[] = profile?.joinedGroupIds || [];
+
+      if (joinedGroupIds.length === 0) {
+        setAsobells([]);
+        setDataLoading(false);
+        return;
+      }
+
       try {
-        const asobellGroupRef = collectionGroup(db, "asobells");
+        const unsubscribes: (() => void)[] = [];
+        const groupAsobellsMap: { [groupId: string]: Asobell[] } = {};
 
-        const unsub = onSnapshot(
-          asobellGroupRef,
-          async (snapshot) => {
-            const listPromises = snapshot.docs.map(async (docSnap) => {
-              const data = docSnap.data();
-              const parentGroupId = docSnap.ref.parent.parent?.id || "";
+        const updateAllAsobells = () => {
+          const all = Object.values(groupAsobellsMap).flat();
+          setAsobells(all);
+          setDataLoading(false);
+        };
 
-              const uids: string[] = Array.isArray(data.participantIds)
-                ? data.participantIds
-                : Array.isArray(data.participantUids)
-                  ? data.participantUids
-                  : [];
+        joinedGroupIds.forEach((groupId) => {
+          const asobellColRef = collection(db, "groups", groupId, "asobells");
 
-              const participantsPromises = uids.map(async (uid) => {
-                if (uid === myUid) {
-                  return {
-                    id: uid,
-                    initial: myAvatarText,
-                  };
-                }
+          const unsub = onSnapshot(
+            asobellColRef,
+            async (snapshot) => {
+              const listPromises = snapshot.docs.map(async (docSnap) => {
+                const data = docSnap.data();
 
-                try {
-                  const uSnap = await getDoc(doc(db, "users", uid));
-                  if (uSnap.exists()) {
-                    const uData = uSnap.data() as UserDocData;
+                const uids: string[] = Array.isArray(data.participantIds)
+                  ? data.participantIds
+                  : Array.isArray(data.participantUids)
+                    ? data.participantUids
+                    : [];
+
+                const participantsPromises = uids.map(async (uid) => {
+                  if (uid === myUid) {
                     return {
                       id: uid,
-                      initial: uData.avatarText || "MB",
+                      initial: myAvatarText,
                     };
                   }
-                } catch (e) {
-                  console.error(`avatarText取得失敗 (${uid}):`, e);
-                }
+
+                  try {
+                    const uSnap = await getDoc(doc(db, "users", uid));
+                    if (uSnap.exists()) {
+                      const uData = uSnap.data() as UserDocData;
+                      return {
+                        id: uid,
+                        initial: uData.avatarText || "MB",
+                      };
+                    }
+                  } catch (e) {
+                    console.error(`avatarText取得失敗 (${uid}):`, e);
+                  }
+
+                  return {
+                    id: uid,
+                    initial: "MB",
+                  };
+                });
+
+                const participants = await Promise.all(participantsPromises);
+
+                const rawStartDateTime =
+                  data.startDateTime || data.startAt || data.date || "";
+                const rawEndDateTime = data.endDateTime || data.endAt || "";
 
                 return {
-                  id: uid,
-                  initial: "MB",
+                  id: docSnap.id,
+                  groupId: groupId,
+                  title: data.title || "あそベル",
+                  date: formatDisplayDate(rawStartDateTime),
+                  startDateTime: rawStartDateTime,
+                  endDateTime: rawEndDateTime,
+                  capacity: data.capacity || data.maxParticipants || 4,
+                  participantIds: uids,
+                  participants,
                 };
               });
 
-              const participants = await Promise.all(participantsPromises);
+              const resolvedList = await Promise.all(listPromises);
+              
+              groupAsobellsMap[groupId] = resolvedList;
+              updateAllAsobells();
+            },
+            (error) => {
+              console.error(`Group ${groupId} Asobells Listener Error:`, error);
+              setDataLoading(false);
+            }
+          );
 
-              const rawStartDateTime =
-                data.startDateTime || data.startAt || data.date || "";
-              const rawEndDateTime = data.endDateTime || data.endAt || "";
+          unsubscribes.push(unsub);
+        });
 
-              return {
-                id: docSnap.id,
-                groupId: parentGroupId,
-                title: data.title || "あそベル",
-                date: formatDisplayDate(rawStartDateTime),
-                startDateTime: rawStartDateTime,
-                endDateTime: rawEndDateTime,
-                capacity: data.capacity || data.maxParticipants || 4,
-                participantIds: uids,
-                participants,
-              };
-            });
-
-            const resolvedList = await Promise.all(listPromises);
-
-            setAsobells(resolvedList);
-            setDataLoading(false);
-          },
-          (error) => {
-            console.error("CollectionGroup Listener Error:", error);
-            setDataLoading(false);
-          },
-        );
-
-        return () => unsub();
+        return () => {
+          unsubscribes.forEach((unsub) => unsub());
+        };
       } catch (e) {
         console.error("Setup Error:", e);
         setDataLoading(false);
       }
-    }, [myUid, myAvatarText]),
+    }, [myUid, myAvatarText, profile?.joinedGroupIds]),
   );
 
   const goToDetail = (asobellId: string, groupId: string) => {

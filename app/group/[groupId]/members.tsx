@@ -1,4 +1,3 @@
-//退出ボタンはまだ実装していない
 import { MyText } from "@/compornents/MyText";
 import { useUserProfile } from "@/compornents/useUserProfile";
 import { db } from "@/firebase";
@@ -6,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   arrayRemove,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
@@ -107,7 +107,7 @@ export default function GroupMembers() {
       (error) => {
         console.error("グループ取得エラー:", error);
         setDataLoading(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -137,6 +137,7 @@ export default function GroupMembers() {
         : `${member.name}さんをグループから削除します。この操作は取り消せません。`,
       [
         { text: "キャンセル", style: "cancel" },
+
         {
           text: isMe ? "退出する" : "削除する",
           style: "destructive",
@@ -147,9 +148,22 @@ export default function GroupMembers() {
               const groupRef = doc(db, "groups", groupId);
               const userRef = doc(db, "users", member.id);
 
-              await updateDoc(groupRef, {
-                memberIds: arrayRemove(member.id),
-              });
+              const groupSnap = await getDoc(groupRef);
+              const currentMemberIds = groupSnap.exists()
+                ? groupSnap.data().memberIds || []
+                : [];
+
+              const remainingCount = currentMemberIds.filter(
+                (id: string) => id !== member.id,
+              ).length;
+
+              if (remainingCount === 0) {
+                await deleteDoc(groupRef);
+              } else {
+                await updateDoc(groupRef, {
+                  memberIds: arrayRemove(member.id),
+                });
+              }
 
               await updateDoc(userRef, {
                 joinedGroupIds: arrayRemove(groupId),
@@ -164,7 +178,7 @@ export default function GroupMembers() {
             }
           },
         },
-      ]
+      ],
     );
   };
 

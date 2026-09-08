@@ -6,7 +6,7 @@ import { auth, db } from "../firebase";
 export interface UserProfile {
   nickname: string;
   avatarText: string;
-  email?: string;
+  joinedGroupIds?: string[];
 }
 
 export function useUserProfile() {
@@ -28,7 +28,7 @@ export function useUserProfile() {
               setProfile({
                 nickname: data.nickname || "名無し",
                 avatarText: data.avatarText || "??",
-                email: currentUser.email || "",
+                joinedGroupIds: Array.isArray(data.joinedGroupIds) ? data.joinedGroupIds : [],
               });
             } else {
               setProfile(null);

@@ -4,10 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -26,6 +27,7 @@ export default function AsobellEdit() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState("");
   const [asobellTitle, setAsobellTitle] = useState("");
@@ -217,6 +219,35 @@ export default function AsobellEdit() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!asobellId || !groupId) return;
+
+    Alert.alert(
+      "あそベルの削除",
+      "このあそベルを削除しますか？この操作は元に戻せません。",
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "削除する",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              const docRef = doc(db, "groups", groupId, "asobells", asobellId);
+              await deleteDoc(docRef);
+              router.replace("../(tabs)");
+            } catch (error) {
+              console.error("削除エラー:", error);
+              alert("削除に失敗しました。");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const compactCalendarTheme = {
@@ -581,6 +612,16 @@ export default function AsobellEdit() {
           >
             <MyText className="text-white font-semibold text-xl">
               {saving ? "保存中..." : "変更を保存"}
+            </MyText>
+          </Pressable>
+
+          <Pressable
+            disabled={deleting}
+            className="py-3 items-center justify-center active:opacity-60"
+            onPress={handleDelete}
+          >
+            <MyText className="text-danger font-bold pt-3 text-xl">
+              {deleting ? "削除中..." : "× あそベルを削除する"}
             </MyText>
           </Pressable>
         </View>

@@ -5,8 +5,16 @@ import { MyText } from "@/compornents/MyText";
 import { auth, db } from "@/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { arrayUnion, doc, getDoc, updateDoc } from "firebase/firestore";
-import React, { useState } from "react";
+import {
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,9 +29,9 @@ export default function JoinGroupScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleJoinGroup = async () => {
-    const trimmedId = groupIdInput.trim();
-    if (!trimmedId) {
-      Alert.alert("エラー", "グループIDを入力してください");
+    const trimmedCode = groupIdInput.trim();
+    if (!trimmedCode) {
+      Alert.alert("エラー", "招待コードを入力してください");
       return;
     }
 
@@ -36,45 +44,72 @@ export default function JoinGroupScreen() {
     setLoading(true);
 
     try {
-      const groupRef = doc(db, "groups", trimmedId);
-      const groupSnap = await getDoc(groupRef);
+      const groupsRef = collection(db, "groups");
+      const q = query(groupsRef, where("inviteCode", "==", trimmedCode));
+      const querySnapshot = await getDocs(q);
 
-      if (!groupSnap.exists()) {
+      if (querySnapshot.empty) {
         Alert.alert("エラー", "該当するグループが見つかりませんでした");
         setLoading(false);
         return;
       }
 
-      await updateDoc(groupRef, {
-        members: arrayUnion(myUid),
-      });
+      const groupDoc = querySnapshot.docs[0];
+      const targetGroupId = groupDoc.id;
+      const groupData = groupDoc.data();
+      const groupName = groupData.name || "グループ";
 
-      Alert.alert("成功", "グループに参加しました！", [
+      setLoading(false);
+
+      Alert.alert("グループの確認", `「${groupName}」に参加しますか？`, [
         {
-          text: "OK",
-          onPress: () => router.replace("/(tabs)/groups"),
+          text: "キャンセル",
+          style: "cancel",
+        },
+        {
+          text: "参加する",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const groupRef = doc(db, "groups", targetGroupId);
+
+              await updateDoc(groupRef, {
+                memberIds: arrayUnion(myUid),
+              });
+
+              Alert.alert("成功", "グループに参加しました！", [
+                {
+                  text: "OK",
+                  onPress: () => router.replace("/(tabs)/groups"),
+                },
+              ]);
+            } catch (error) {
+              console.error("Group join error:", error);
+              Alert.alert("エラー", "グループ参加処理に失敗しました");
+            } finally {
+              setLoading(false);
+            }
+          },
         },
       ]);
     } catch (error) {
-      console.error("Group join error:", error);
-      Alert.alert("エラー", "グループ参加処理に失敗しました");
-    } finally {
+      console.error("Group search error:", error);
+      Alert.alert("エラー", "グループの検索に失敗しました");
       setLoading(false);
     }
   };
 
   return (
     <View className="bg-bg flex-1 px-6 pt-12">
-
       <View className="pb-4">
-          <Pressable
-            className="flex-row items-center gap-1"
-            onPress={() => router.back()}
-          >
-            <Ionicons name="chevron-back" size={20} color="#8B6F4E" />
-            <MyText className="text-brown text-xl font-bold">戻る</MyText>
-          </Pressable>
-        </View>
+        <Pressable
+          className="flex-row items-center gap-1"
+          onPress={() => router.back()}
+        >
+          <Ionicons name="chevron-back" size={20} color="#8B6F4E" />
+          <MyText className="text-brown text-xl font-bold">戻る</MyText>
+        </Pressable>
+      </View>
 
       <MyText className="text-dark text-2xl font-rounded-bold mb-2">
         グループに参加する

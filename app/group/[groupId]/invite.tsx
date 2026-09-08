@@ -1,8 +1,8 @@
 /*グループ一覧(app/(tabs)/groups.tsxページの右下のボタンから遷移。
 グループに招待する画面*/
 
-import { db } from "@/firebase";
 import { MyText } from "@/compornents/MyText";
+import { db } from "@/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -66,11 +66,13 @@ export default function MyComponent() {
         <Pressable
           className="flex-row items-center gap-1"
           onPress={() => {
-            router.push("../index");
+            router.back();
           }}
         >
           <Ionicons name="chevron-back" size={20} color="#8B6F4E" />
-          <MyText className="text-brown font-bold text-xl ">グループ詳細に戻る</MyText>
+          <MyText className="text-brown font-bold text-xl ">
+            グループ詳細に戻る
+          </MyText>
         </Pressable>
       </View>
       <View className="pt-6 p-3">
